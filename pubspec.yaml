@@ -1,0 +1,23 @@
+name: smokeit
+description: >-
+  Simuliert das Abbrennen von Zigarette, Zigarre oder Joint auf dem Display -
+  gesteuert durch Sauggeraeusche ueber das Mikrofon.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  permission_handler: ^13.0.0
+  noise_meter: ^6.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
