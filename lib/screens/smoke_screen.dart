@@ -67,7 +67,7 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
 
   Future<void> _initAudio() async {
     try {
-      await _crackle.setAudioSource(AssetAudioSource('assets/audio/crackle.wav'));
+      await _crackle.setAudioSource(AudioSource.asset('assets/audio/crackle.wav'));
       await _crackle.setLoopMode(LoopMode.all);
       await _crackle.setVolume(0.15);
       _audioReady = true;
@@ -79,7 +79,7 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
   Future<void> _playSfx(String asset) async {
     try {
       await _sfx.stop();
-      await _sfx.setAudioSource(AssetAudioSource(asset));
+      await _sfx.setAudioSource(AudioSource.asset(asset));
       await _sfx.play();
     } catch (_) {}
   }
