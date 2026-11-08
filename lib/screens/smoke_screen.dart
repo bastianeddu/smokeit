@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/particle.dart';
@@ -23,6 +23,8 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
   late final AnimationController _ticker;
   final InhaleDetector _detector = InhaleDetector();
   StreamSubscription<InhaleEvent>? _inhaleSub;
+  final AudioPlayer _crackle = AudioPlayer();
+  final AudioPlayer _sfx = AudioPlayer();
 
   final List<SmokeParticle> _smoke = [];
   final List<AshParticle> _ashFlecks = [];
@@ -34,9 +36,14 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
   double _elapsed = 0;
   int _puffs = 0;
   bool _finished = false;
+  bool _blackout = false;
   bool _micGranted = false;
+  bool _audioReady = false;
   DateTime? _lastTick;
+  Timer? _blackoutTimer;
   Size? _canvasSize;
+
+  bool get _isBong => widget.item.isBong;
 
   @override
   void initState() {
@@ -45,6 +52,7 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
       ..addListener(_tick)
       ..repeat();
     _initMic();
+    _initAudio();
   }
 
   Future<void> _initMic() async {
@@ -57,27 +65,47 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
     if (mounted) setState(() {});
   }
 
-  void _onInhale(InhaleEvent event) {
+  Future<void> _initAudio() async {
+    try {
+      await _crackle.setAudioSource(AssetAudioSource('assets/audio/crackle.wav'));
+      await _crackle.setLoopMode(LoopMode.all);
+      await _crackle.setVolume(0.15);
+      _audioReady = true;
+    } catch (_) {
+      _audioReady = false;
+    }
+  }
+
+  Future<void> _playSfx(String asset) async {
+    try {
+      await _sfx.stop();
+      await _sfx.setAudioSource(AssetAudioSource(asset));
+      await _sfx.play();
+    } catch (_) {}
+  }
+
+  void _registerPuff() {
     if (_finished) return;
     _puffs++;
     _puffEnergy = 1;
+    unawaited(_playSfx(_isBong ? 'assets/audio/bong.wav' : 'assets/audio/inhale.wav'));
     setState(() {});
   }
 
-  void _manualPuff() {
-    if (_finished) return;
-    _puffs++;
-    _puffEnergy = 1;
-    setState(() {});
-  }
+  void _onInhale(InhaleEvent event) => _registerPuff();
+
+  void _manualPuff() => _registerPuff();
 
   void _reset() {
+    _blackoutTimer?.cancel();
+    unawaited(_crackle.stop());
     setState(() {
       _progress = 0;
       _ember = 0.3;
       _puffEnergy = 0;
       _puffs = 0;
       _finished = false;
+      _blackout = false;
       _lastTick = null;
       _smoke.clear();
       _ashFlecks.clear();
@@ -93,9 +121,14 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
     _lastTick = now;
     _elapsed += dt;
 
-    final double baseRate = 1 / widget.item.duration.inSeconds;
     final double active = _detector.inhaling ? 1.0 : 0.0;
-    final double rate = baseRate * (1 + 3.5 * _puffEnergy + 2.5 * active);
+    final double rate;
+    if (_isBong) {
+      rate = _puffEnergy / 2.2;
+    } else {
+      final double baseRate = 1 / widget.item.duration.inSeconds;
+      rate = baseRate * (1 + 3.5 * _puffEnergy + 2.5 * active);
+    }
     _progress = (_progress + rate * dt).clamp(0.0, 1.0);
     _puffEnergy = math.max(0.0, _puffEnergy - dt / 2.2);
 
@@ -104,8 +137,20 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
 
     _spawnParticles(dt);
 
+    if (_audioReady) {
+      unawaited(_crackle.play().catchError((Object e) {}));
+      unawaited(_crackle.setVolume((0.12 + 0.55 * _ember).clamp(0.0, 1.0)).catchError((Object e) {}));
+    }
+
     if (_progress >= 1) {
       _finished = true;
+      unawaited(_crackle.stop());
+      if (_isBong) {
+        _blackout = true;
+        _blackoutTimer = Timer(const Duration(milliseconds: 2600), () {
+          if (mounted) setState(() => _blackout = false);
+        });
+      }
     }
     setState(() {});
   }
@@ -113,26 +158,25 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
   void _spawnParticles(double dt) {
     final Size? size = _canvasSize;
     if (size == null) return;
-    final double y = size.height * BurningItemPainter.yFactor;
-    final double left = size.width * BurningItemPainter.leftFactor;
-    final double right = size.width * BurningItemPainter.rightFactor;
-    final double burnX = ui.lerpDouble(left, right, _progress)!;
-    final double h = size.height * widget.item.thickness;
+    final Offset emberPos = BurningItemPainter.emberOffset(size, widget.item, _progress);
+    final double h = _isBong
+        ? math.min(size.width, size.height) * 0.05
+        : size.height * widget.item.thickness;
 
     if (_ember > 0.15 && _rng.nextDouble() < _ember * dt * 26) {
       _smoke.add(SmokeParticle(
-        x: burnX + (_rng.nextDouble() - 0.5) * h,
-        y: y - h * 0.4,
+        x: emberPos.dx + (_rng.nextDouble() - 0.5) * h,
+        y: emberPos.dy - h * 0.4,
         vx: (_rng.nextDouble() - 0.5) * 14,
         vy: -(26 + _rng.nextDouble() * 30) * (0.6 + _ember),
         life: 2.2 + _rng.nextDouble() * 1.8,
         radius: 3 + _rng.nextDouble() * 3,
       ));
     }
-    if (_ember > 0.5 && _rng.nextDouble() < _ember * dt * 1.5) {
+    if (!_isBong && _ember > 0.5 && _rng.nextDouble() < _ember * dt * 1.5) {
       _ashFlecks.add(AshParticle(
-        x: burnX + (_rng.nextDouble() - 0.5) * h,
-        y: y + (_rng.nextDouble() - 0.5) * h,
+        x: emberPos.dx + (_rng.nextDouble() - 0.5) * h,
+        y: emberPos.dy + (_rng.nextDouble() - 0.5) * h,
         vx: (_rng.nextDouble() - 0.5) * 24,
         vy: -10 - _rng.nextDouble() * 12,
         life: 0.7 + _rng.nextDouble() * 0.7,
@@ -156,6 +200,9 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
     _ticker.dispose();
     _inhaleSub?.cancel();
     _detector.dispose();
+    _blackoutTimer?.cancel();
+    unawaited(_crackle.dispose());
+    unawaited(_sfx.dispose());
     super.dispose();
   }
 
@@ -242,9 +289,11 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
                           child: Text(
                             _finished
                                 ? 'Aufgeraucht!'
-                                : _micGranted
-                                    ? 'Mach ein Sauggeräusch …'
-                                    : 'Mikrofon nicht erlaubt - tippe unten für einen Zug.',
+                                : _isBong
+                                    ? 'Ein Zug ziehen - mit Flutsch …'
+                                    : _micGranted
+                                        ? 'Mach ein Sauggeräusch …'
+                                        : 'Mikrofon nicht erlaubt - tippe unten für einen Zug.',
                             style: const TextStyle(color: Colors.white70),
                           ),
                         ),
@@ -281,10 +330,12 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Text('🚭', style: TextStyle(fontSize: 48)),
+                              Text(_isBong ? '😵‍💫' : '🚭', style: const TextStyle(fontSize: 48)),
                               const SizedBox(height: 8),
                               Text(
-                                'Aus! Die ${widget.item.label} ist aufgeraucht.',
+                                _isBong
+                                    ? 'Bong geleert in einem Zug!'
+                                    : 'Aus! Die ${widget.item.label} ist aufgeraucht.',
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
@@ -312,6 +363,7 @@ class _SmokeScreenState extends State<SmokeScreen> with SingleTickerProviderStat
                     ),
                   ),
                 ),
+              if (_blackout) const Positioned.fill(child: ColoredBox(color: Colors.black)),
             ],
           );
         },

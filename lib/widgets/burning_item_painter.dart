@@ -6,6 +6,26 @@ import 'package:flutter/material.dart';
 import '../models/particle.dart';
 import '../models/smoke_item.dart';
 
+class _BongLayout {
+  _BongLayout({
+    required this.cx,
+    required this.cy,
+    required this.r,
+    required this.tubeX,
+    required this.tubeW,
+    required this.tubeTop,
+    required this.bowlH,
+  });
+
+  final double cx;
+  final double cy;
+  final double r;
+  final double tubeX;
+  final double tubeW;
+  final double tubeTop;
+  final double bowlH;
+}
+
 class BurningItemPainter extends CustomPainter {
   BurningItemPainter({
     required this.item,
@@ -27,23 +47,43 @@ class BurningItemPainter extends CustomPainter {
   final List<AshParticle> ash;
   final double time;
 
-  @override
-  void paint(Canvas canvas, Size size) {
+  static _BongLayout bongLayout(Size size) {
+    final double cx = size.width * 0.5;
+    final double cy = size.height * 0.60;
+    final double r = math.min(size.width, size.height) * 0.15;
+    return _BongLayout(
+      cx: cx,
+      cy: cy,
+      r: r,
+      tubeX: cx + r * 0.42,
+      tubeW: r * 0.42,
+      tubeTop: cy - r * 1.75,
+      bowlH: r * 0.55,
+    );
+  }
+
+  static Offset emberOffset(Size size, SmokeItem item, double progress) {
+    if (item.isBong) {
+      final _BongLayout l = bongLayout(size);
+      final double lumpH = l.bowlH * 0.75 * (1 - progress);
+      return Offset(l.tubeX + l.tubeW / 2, l.tubeTop - l.bowlH * 0.15 - lumpH);
+    }
     final double y = size.height * yFactor;
     final double left = size.width * leftFactor;
     final double right = size.width * rightFactor;
-    final double fullLen = right - left;
-    final double burnX = ui.lerpDouble(left, right, progress)!;
-    final double h = size.height * item.thickness;
+    return Offset(ui.lerpDouble(left, right, progress)!, y);
+  }
 
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset emberPos = emberOffset(size, item, progress);
     if (progress < 1 && ember > 0.03) {
-      final Offset c = Offset(burnX, y);
       final double r = size.shortestSide * 0.6;
       canvas.drawRect(
         Offset.zero & size,
         Paint()
           ..shader = ui.Gradient.radial(
-            c,
+            emberPos,
             r,
             [
               const Color(0xFFFF8C1A).withValues(alpha: 0.12 * ember),
@@ -53,14 +93,85 @@ class BurningItemPainter extends CustomPainter {
       );
     }
 
-    _drawShadow(canvas, y, h, left, right);
-    if (progress < 1) {
-      _drawAsh(canvas, left, burnX, y, h, fullLen);
-      _drawBody(canvas, burnX, right, y, h, fullLen);
-      _drawEmber(canvas, burnX, y, h);
+    if (item.isBong) {
+      _drawBong(canvas, size);
+    } else {
+      final double y = size.height * yFactor;
+      final double left = size.width * leftFactor;
+      final double right = size.width * rightFactor;
+      final double fullLen = right - left;
+      final double burnX = ui.lerpDouble(left, right, progress)!;
+      final double h = size.height * item.thickness;
+      _drawShadow(canvas, y, h, left, right);
+      if (progress < 1) {
+        _drawAsh(canvas, left, burnX, y, h, fullLen);
+        _drawBody(canvas, burnX, right, y, h, fullLen);
+        _drawEmberAt(canvas, burnX, y, h, ember, time);
+      }
     }
     _drawSmoke(canvas);
     _drawAshFlecks(canvas);
+  }
+
+  void _drawBong(Canvas canvas, Size size) {
+    final _BongLayout l = bongLayout(size);
+    final double cx = l.cx;
+    final double cy = l.cy;
+    final double r = l.r;
+
+    canvas.drawOval(
+      Rect.fromCenter(center: Offset(cx, cy + r * 1.15), width: r * 2.4, height: r * 0.5),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.28)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+
+    final Path flask = Path()..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
+    canvas.save();
+    canvas.clipPath(flask);
+    canvas.drawRect(
+      Rect.fromLTWH(cx - r, cy + r * 0.05, r * 2, r),
+      Paint()..color = const Color(0xFF3E9BD6).withValues(alpha: 0.45),
+    );
+    canvas.restore();
+    canvas.drawPath(flask, Paint()..color = const Color(0xFFBFE6F5).withValues(alpha: 0.22));
+    canvas.drawPath(
+      flask,
+      Paint()
+        ..color = const Color(0xFFEAF7FD).withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+
+    final Rect tube = Rect.fromLTWH(l.tubeX, l.tubeTop, l.tubeW, cy - r * 0.2 - l.tubeTop);
+    canvas.drawRect(tube, Paint()..color = const Color(0xFFBFE6F5).withValues(alpha: 0.22));
+    canvas.drawRect(
+      tube,
+      Paint()
+        ..color = const Color(0xFFEAF7FD).withValues(alpha: 0.85)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+
+    final double bowlW = l.tubeW * 1.3;
+    final double bowlX = l.tubeX + l.tubeW / 2 - bowlW / 2;
+    final Path bowl = Path()
+      ..moveTo(bowlX, l.tubeTop)
+      ..lineTo(bowlX + bowlW, l.tubeTop)
+      ..lineTo(bowlX + bowlW * 0.82, l.tubeTop - l.bowlH)
+      ..lineTo(bowlX + bowlW * 0.18, l.tubeTop - l.bowlH)
+      ..close();
+    canvas.drawPath(bowl, Paint()..color = const Color(0xFFBFE6F5).withValues(alpha: 0.3));
+
+    if (progress < 1) {
+      final double lumpH = l.bowlH * 0.75 * (1 - progress);
+      final double lumpTop = l.tubeTop - l.bowlH * 0.15 - lumpH;
+      canvas.drawRect(
+        Rect.fromLTWH(bowlX + bowlW * 0.2, lumpTop, bowlW * 0.6, lumpH + 2),
+        Paint()..color = const Color(0xFF5A4632),
+      );
+      _drawEmberAt(canvas, l.tubeX + l.tubeW / 2, lumpTop, r * 0.45, ember, time);
+    }
   }
 
   void _drawShadow(Canvas canvas, double y, double h, double left, double right) {
@@ -188,16 +299,16 @@ class BurningItemPainter extends CustomPainter {
     }
   }
 
-  void _drawEmber(Canvas canvas, double burnX, double y, double h) {
-    final double flicker = 0.8 + 0.2 * math.sin(time * 11.0) * math.sin(time * 23.0 + 1.7);
-    final double intensity = (ember * flicker).clamp(0.0, 1.0);
+  void _drawEmberAt(Canvas canvas, double x, double y, double h, double emberValue, double t) {
+    final double flicker = 0.8 + 0.2 * math.sin(t * 11.0) * math.sin(t * 23.0 + 1.7);
+    final double intensity = (emberValue * flicker).clamp(0.0, 1.0);
     final double glowR = h * (2.0 + 3.0 * intensity);
     canvas.drawCircle(
-      Offset(burnX, y),
+      Offset(x, y),
       glowR,
       Paint()
         ..shader = ui.Gradient.radial(
-          Offset(burnX, y),
+          Offset(x, y),
           glowR,
           [
             const Color(0xFFFFB347).withValues(alpha: 0.85 * intensity),
@@ -208,17 +319,17 @@ class BurningItemPainter extends CustomPainter {
         ),
     );
     canvas.drawCircle(
-      Offset(burnX, y),
+      Offset(x, y),
       h * 0.62 * (0.75 + 0.35 * intensity),
       Paint()..color = const Color(0xFFFF7B24),
     );
     canvas.drawCircle(
-      Offset(burnX, y),
+      Offset(x, y),
       h * 0.4 * (0.75 + 0.35 * intensity),
       Paint()..color = const Color(0xFFFFD27A),
     );
     canvas.drawCircle(
-      Offset(burnX - h * 0.08, y - h * 0.08),
+      Offset(x - h * 0.08, y - h * 0.08),
       h * 0.16 * (0.7 + 0.5 * intensity),
       Paint()..color = const Color(0xFFFFF3D6),
     );

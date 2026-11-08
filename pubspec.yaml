@@ -1,9 +1,9 @@
 name: smokeit
 description: >-
-  Simuliert das Abbrennen von Zigarette, Zigarre oder Joint auf dem Display -
-  gesteuert durch Sauggeraeusche ueber das Mikrofon.
+  Simuliert das Abbrennen von Zigarette, Zigarre, Joint oder Bong auf dem Display -
+  gesteuert durch Sauggeraeusche, mit Crackle- und Flutsch-Sounds.
 publish_to: "none"
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -11,8 +11,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  permission_handler: ^13.0.0
+  permission_handler: ^12.0.1
   noise_meter: ^6.0.0
+  just_audio: ^0.10.6
 
 dev_dependencies:
   flutter_test:
@@ -21,3 +22,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/audio/crackle.wav
+    - assets/audio/inhale.wav
+    - assets/audio/bong.wav

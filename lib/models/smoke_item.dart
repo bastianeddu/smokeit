@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum SmokeItemType { cigarette, cigar, joint }
+enum SmokeItemType { cigarette, cigar, joint, bong }
 
 class SmokeItem {
   const SmokeItem({
@@ -24,6 +24,8 @@ class SmokeItem {
   final Color endColor;
   final bool isCone;
   final String icon;
+
+  bool get isBong => type == SmokeItemType.bong;
 
   static const List<SmokeItem> all = [
     SmokeItem(
@@ -58,6 +60,17 @@ class SmokeItem {
       endColor: Color(0xFFF8F6EE),
       isCone: true,
       icon: '🍃',
+    ),
+    SmokeItem(
+      type: SmokeItemType.bong,
+      label: 'Bong',
+      subtitle: 'Ein Zug mit Flutsch - danach wird kurz schwarz …',
+      duration: Duration(seconds: 3),
+      thickness: 0.15,
+      bodyColor: Color(0xFF9FD4E8),
+      endColor: Color(0xFF3E7CA6),
+      isCone: false,
+      icon: '🫧',
     ),
   ];
 }
